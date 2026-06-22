@@ -1,7 +1,6 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { HfInference } from "@huggingface/inference";
 
 const app = express();
 const PORT = 3000;
@@ -28,6 +27,8 @@ app.post("/api/inference", async (req, res) => {
   try {
     console.log(`[HF_REQUEST] Model: ${model} | Task: ${task || 'AUTO'} | Provider: ${provider || 'DEFAULT'}`);
     
+    // api-inference.huggingface.co is the official endpoint.
+    // router.huggingface.co is kept as a fallback if DNS fails for the primary.
     const url = `https://api-inference.huggingface.co/models/${model}`;
     const body: any = {
       inputs,
@@ -40,53 +41,92 @@ app.post("/api/inference", async (req, res) => {
     const headers: Record<string, string> = {
       "Authorization": `Bearer ${HF_TOKEN}`,
       "Content-Type": "application/json",
-      "X-Wait-For-Model": "true",
+      "x-wait-for-model": "true",
       "x-use-cache": "true"
     };
 
     if (task) {
-      body.task = task;
+      // Modern Inference Providers (Together, Fireworks, etc.) use x-inference-task
       headers["x-inference-task"] = task;
-      // Some providers also want it in the parameters
-      body.parameters = {
-        ...body.parameters,
-        task: task
-      };
+      // Some legacy or model-specific endpoints prefer it in the body
+      body.task = task;
     }
 
     if (provider && provider !== "hf-inference") {
       headers["x-inference-provider"] = provider;
     }
 
-    // Try primary endpoint
+    // Attempt inference with automated fallback for network resilience
+    // api-inference.hf.co is used as a reliable alternative to .huggingface.co in some environments
+    const endpoints = [
+      `https://api-inference.hf.co/models/${model}`,
+      `https://router.huggingface.co/models/${model}`,
+      `https://api-inference.huggingface.co/models/${model}`
+    ];
+    
     let response;
-    try {
-      response = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-      });
-    } catch (fetchErr: any) {
-      console.error(`[HF_PRIMARY_FAILED] ${fetchErr.message}`);
-      
-      // Fallback to alternative domain if it's a DNS issue
-      if (fetchErr.message.includes("ENOTFOUND") || fetchErr.message.includes("fetch failed")) {
-        const fallbackUrl = `https://api.huggingface.co/models/${model}`;
-        console.log(`[HF_FALLBACK_TRYING] ${fallbackUrl}`);
-        response = await fetch(fallbackUrl, {
+    let lastError: any;
+
+    const isPartnerProvider = provider && provider !== "hf-inference";
+
+    for (const url of endpoints) {
+      try {
+        // Optimization: If a partner provider is selected, we MUST use the router
+        if (isPartnerProvider && !url.includes("router.huggingface.co")) {
+          continue;
+        }
+
+        console.log(`[HF_TRY] Attempting: ${url}`);
+        response = await fetch(url, {
           method: "POST",
           headers,
           body: JSON.stringify(body),
         });
-      } else {
-        throw fetchErr;
+        
+        // If we get a response (even if not 2xx), we evaluate if we should continue searching
+        if (response.ok) {
+          console.log(`[HF_CHECK] Success from ${url}`);
+          break;
+        }
+
+        // If it's a 404 from the router, it might mean the model isn't available via the router's current provider set
+        // We move to next if it's a "model not found" or "provider not found" type error in the fallback chain
+        if (response.status === 404 && url.includes("router")) {
+           console.log(`[HF_DEBUG] Router 404 for ${model}, trying next...`);
+           continue;
+        }
+
+        // For 401/403, we break because it's an auth issue, not a routing issue
+        if (response.status === 401 || response.status === 403) {
+          break;
+        }
+      } catch (err: any) {
+        console.error(`[HF_TRY_FAIL] ${url}: ${err.message}`);
+        lastError = err;
       }
     }
 
-    const data = await response.json();
+    if (!response) {
+      throw lastError || new Error("All inference endpoints failed to resolve.");
+    }
+
+    let data: any;
+    const contentType = response.headers.get("content-type");
+    const text = await response.text();
+    
+    try {
+      if (contentType && contentType.includes("application/json")) {
+        data = JSON.parse(text);
+      } else {
+        data = { error: text || `HTTP ${response.status}: ${response.statusText}` };
+      }
+    } catch (e) {
+      data = { error: text || `Failed to parse response from Hugging Face (Status: ${response.status})` };
+    }
 
     if (!response.ok) {
       console.error(`[HF_ERROR] Status: ${response.status} | Model: ${model}`);
+      console.error(`[HF_ERROR_BODY] ${text.substring(0, 200)}`);
       
       let errorMessage = "Unknown error from Hugging Face API.";
       if (data.error) errorMessage = data.error;
@@ -124,32 +164,6 @@ app.post("/api/inference", async (req, res) => {
       task,
       details: error.cause?.message || "Verify your HF_TOKEN and model ID."
     });
-  }
-});
-
-// Network test endpoint
-app.get("/api/test-network", async (req, res) => {
-  try {
-    const urls = [
-      "https://www.google.com",
-      "https://huggingface.co",
-      "https://api-inference.huggingface.co",
-      "https://api.huggingface.co"
-    ];
-    
-    const results: any = {};
-    for (const url of urls) {
-      try {
-        const resp = await fetch(url, { method: "HEAD" });
-        results[url] = { status: resp.status, ok: resp.ok };
-      } catch (e: any) {
-        results[url] = { error: e.message, code: e.code };
-      }
-    }
-    
-    res.json(results);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
   }
 });
 

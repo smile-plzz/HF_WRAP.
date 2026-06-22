@@ -48,7 +48,7 @@ export default function App() {
     setError(null);
     const activeModel = isCustomMode ? customModel : model;
     const modelOption = POPULAR_MODELS.find(m => m.id === model);
-    const activeTask = isCustomMode ? customTask : modelOption?.task;
+    const activeTask = (isCustomMode ? customTask : modelOption?.task) || "text-generation";
     const activeProvider = isCustomMode ? customProvider : modelOption?.provider;
 
     try {
@@ -185,6 +185,10 @@ export default function App() {
                   className="w-full bg-[#111] border border-[#222] p-2 text-xs font-mono focus:border-[#FFD21E] focus:outline-none text-white tracking-widest"
                 />
                 <p className="text-[8px] font-mono opacity-20 leading-tight">If provided, this token bypasses server-level keys.</p>
+                <div className="p-3 bg-white/[0.02] border border-white/5 rounded mt-2">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-[#FFD21E] opacity-60 mb-1">Token_Guide</p>
+                  <p className="text-[8px] opacity-40 leading-relaxed font-mono">Use a [READ] or [FINE-GRAINED] token with the [inference] scope for neural bridge stability.</p>
+                </div>
               </div>
             </div>
           </div>
@@ -259,7 +263,27 @@ export default function App() {
                 </button>
              </div>
              
-             {isCustomMode ? (
+             {!isCustomMode && (
+               <div className="flex gap-2">
+                 <div className="relative group">
+                   <select 
+                     value={model}
+                     onChange={(e) => setModel(e.target.value)}
+                     className="appearance-none bg-[#111] border border-[#222] px-4 py-2 pr-10 text-xs font-mono focus:outline-none focus:border-[#FFD21E] cursor-pointer w-64 text-white uppercase tracking-wider"
+                   >
+                     {POPULAR_MODELS.map(opt => (
+                       <option key={opt.id} value={opt.id} className="bg-[#1a1a1e]">{opt.id.toUpperCase()}</option>
+                     ))}
+                   </select>
+                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+                 </div>
+                 <div className="flex items-center px-4 bg-[#111] border border-[#222] text-[10px] font-mono text-[#FFD21E] uppercase tracking-tighter">
+                   Vector: {POPULAR_MODELS.find(m => m.id === model)?.task || "AUTO"}
+                 </div>
+               </div>
+             )}
+             
+             {isCustomMode && (
                <div className="flex gap-2">
                  <input 
                    type="text"
@@ -290,19 +314,6 @@ export default function App() {
                     <option value="fal-ai">Prov: Fal.ai</option>
                     <option value="replicate">Prov: Replicate</option>
                  </select>
-               </div>
-             ) : (
-               <div className="relative group">
-                 <select 
-                   value={model}
-                   onChange={(e) => setModel(e.target.value)}
-                   className="appearance-none bg-[#111] border border-[#222] px-4 py-2 pr-10 text-xs font-mono focus:outline-none focus:border-[#FFD21E] cursor-pointer w-64 text-white uppercase tracking-wider"
-                 >
-                   {POPULAR_MODELS.map(opt => (
-                     <option key={opt.id} value={opt.id} className="bg-[#1a1a1e]">{opt.id.toUpperCase()}</option>
-                   ))}
-                 </select>
-                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
                </div>
              )}
           </div>
