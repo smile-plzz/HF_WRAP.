@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme {
+  --color-accent: #FFD21E;
+}
+
+@layer base {
+  body {
+    @apply bg-[#0A0A0A] text-[#E0E0E0];
+  }
+}
+
+@layer utilities {
+  .text-shadow-glow {
+    text-shadow: 0 0 10px var(--color-accent);
+  }
+}
+
+@keyframes cursor-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.animate-cursor {
+  animation: cursor-pulse 1s step-end infinite;
+}
