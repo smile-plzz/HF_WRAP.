@@ -27,6 +27,14 @@ export default function App() {
   const [isCustomMode, setIsCustomMode] = useState(false);
   const [input, setInput] = useState("");
   const [userToken, setUserToken] = useState<string>(() => localStorage.getItem("hf_user_token") || "");
+  const [isTokenValid, setIsTokenValid] = useState<boolean>(true);
+
+  const validateToken = (token: string) => {
+    if (!token) return true;
+    // Modern HF tokens typically start with hf_ and followed by ~34 chars
+    const hfPattern = /^hf_[a-zA-Z0-9]{34,}$/;
+    return hfPattern.test(token);
+  };
   const [results, setResults] = useState<HistoryItem[]>(() => {
     const saved = localStorage.getItem("hf_inference_history");
     return saved ? JSON.parse(saved) : [];
@@ -39,6 +47,7 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem("hf_user_token", userToken);
+    setIsTokenValid(validateToken(userToken));
   }, [userToken]);
 
   useEffect(() => {
@@ -68,6 +77,10 @@ export default function App() {
     const activeProvider = isCustomMode ? customProvider : modelOption?.provider;
 
     try {
+      if (!isTokenValid) {
+        throw new Error("Invalid token format detected. Correct your configuration.");
+      }
+
       if (isCustomMode && !activeModel.trim()) {
         throw new Error("Target Model ID required for propagation.");
       }
@@ -193,23 +206,36 @@ export default function App() {
             <h2 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#FFD21E] opacity-80">System_Config</h2>
             <div className="space-y-4">
               <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                   <label className="text-[9px] uppercase tracking-widest opacity-40 font-bold">HF_Access_Token</label>
+                <div className="flex justify-between items-center text-[9px] uppercase tracking-widest font-bold">
+                   <label className={`transition-colors ${isTokenValid ? 'opacity-40' : 'text-red-500 opacity-100'}`}>
+                     HF_Access_Token {!isTokenValid && "[FORMAT_ERROR]"}
+                   </label>
                    <button 
                     onClick={() => setTokenVisible(!tokenVisible)}
-                    className="text-[8px] uppercase tracking-widest opacity-30 hover:opacity-100"
+                    className="opacity-30 hover:opacity-100"
                    >
                      {tokenVisible ? "[hide]" : "[show]"}
                    </button>
                 </div>
-                <input 
-                  type={tokenVisible ? "text" : "password"}
-                  placeholder="hf_xxxxxxxxxxxx"
-                  value={userToken}
-                  onChange={(e) => setUserToken(e.target.value)}
-                  className="w-full bg-[#111] border border-[#222] p-2 text-xs font-mono focus:border-[#FFD21E] focus:outline-none text-white tracking-widest"
-                />
-                <p className="text-[8px] font-mono opacity-20 leading-tight">If provided, this token bypasses server-level keys.</p>
+                <div className="relative">
+                  <input 
+                    type={tokenVisible ? "text" : "password"}
+                    placeholder="hf_xxxxxxxxxxxx"
+                    value={userToken}
+                    onChange={(e) => setUserToken(e.target.value)}
+                    className={`w-full bg-[#111] border p-2 text-xs font-mono focus:outline-none transition-all text-white tracking-widest ${isTokenValid ? 'border-[#222] focus:border-[#FFD21E]' : 'border-red-500/50 focus:border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.1)]'}`}
+                  />
+                  {!isTokenValid && (
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 text-red-500">
+                      <AlertCircle size={14} />
+                    </div>
+                  )}
+                </div>
+                <p className={`text-[8px] font-mono leading-tight transition-colors ${isTokenValid ? 'opacity-20' : 'text-red-500/60'}`}>
+                  {isTokenValid 
+                    ? "If provided, this token bypasses server-level keys." 
+                    : "Invalid token structure. Tokens should start with 'hf_' followed by at least 34 alphanumeric characters."}
+                </p>
                 <div className="p-3 bg-white/[0.02] border border-white/5 rounded mt-2">
                   <p className="text-[9px] font-bold uppercase tracking-widest text-[#FFD21E] opacity-60 mb-1">Token_Guide</p>
                   <p className="text-[8px] opacity-40 leading-relaxed font-mono">Use a [READ] or [FINE-GRAINED] token with the [inference] scope for neural bridge stability.</p>
