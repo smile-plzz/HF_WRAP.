@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Send, 
@@ -11,9 +11,13 @@ import {
   ChevronDown,
   Sparkles,
   Terminal,
-  Eraser
+  Eraser,
+  Copy,
+  Trash2,
+  ExternalLink,
+  Check
 } from "lucide-react";
-import { POPULAR_MODELS, ModelOption, InferenceResponse } from "./types";
+import { POPULAR_MODELS, ModelOption, InferenceResponse, HistoryItem } from "./types";
 
 export default function App() {
   const [model, setModel] = useState<string>(POPULAR_MODELS[0].id);
@@ -23,7 +27,11 @@ export default function App() {
   const [isCustomMode, setIsCustomMode] = useState(false);
   const [input, setInput] = useState("");
   const [userToken, setUserToken] = useState<string>(() => localStorage.getItem("hf_user_token") || "");
-  const [results, setResults] = useState<{ prompt: string; response: any; model: string; timestamp: string }[]>([]);
+  const [results, setResults] = useState<HistoryItem[]>(() => {
+    const saved = localStorage.getItem("hf_inference_history");
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -32,6 +40,14 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("hf_user_token", userToken);
   }, [userToken]);
+
+  useEffect(() => {
+    localStorage.setItem("hf_inference_history", JSON.stringify(results));
+  }, [results]);
+
+  const clearHistory = () => {
+    setResults([]);
+  };
   
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -105,6 +121,7 @@ export default function App() {
       }
 
       setResults(prev => [...prev, {
+        id: Math.random().toString(36).substring(2, 11),
         prompt: input,
         response: data,
         model: activeModel,
@@ -118,8 +135,16 @@ export default function App() {
     }
   };
 
-  const clearHistory = () => {
-    setResults([]);
+  const copyToClipboard = (text: string, id: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const deleteHistoryItem = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setResults(prev => prev.filter(item => item.id !== id));
   };
 
   return (
@@ -207,10 +232,19 @@ export default function App() {
               {results.length === 0 ? (
                 <p className="text-[10px] font-mono opacity-20 uppercase tracking-widest italic">Stack_Empty</p>
               ) : (
-                results.slice().reverse().map((res, i) => (
-                  <div key={i} className="text-[10px] font-mono border-l border-[#333] pl-3 py-1 space-y-1">
+                results.slice().reverse().map((res) => (
+                  <div key={res.id} onClick={() => {
+                    const el = document.getElementById(`res-${res.id}`);
+                    el?.scrollIntoView({ behavior: 'smooth' });
+                  }} className="text-[10px] font-mono border-l border-[#333] pl-3 py-1 space-y-1 group active:bg-white/5 cursor-pointer relative">
                     <div className="opacity-40">{res.timestamp}</div>
-                    <div className="text-gray-400 truncate">{res.prompt}</div>
+                    <div className="text-gray-400 truncate pr-6">{res.prompt}</div>
+                    <button 
+                      onClick={(e) => deleteHistoryItem(res.id, e)}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-40 hover:opacity-100 p-1"
+                    >
+                      <Trash2 size={10} />
+                    </button>
                   </div>
                 ))
               )}
@@ -340,7 +374,8 @@ export default function App() {
               <motion.div 
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                key={i}
+                key={res.id}
+                id={`res-${res.id}`}
                 className="max-w-5xl space-y-6"
               >
                 <div className="space-y-3">
@@ -353,17 +388,48 @@ export default function App() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <label className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#FFD21E]">Model_Output</label>
-                    <span className="text-[8px] font-mono text-white/20 uppercase tracking-widest">{res.model} @ {res.timestamp}</span>
+                    <div className="flex items-center gap-4">
+                      <button 
+                        onClick={() => {
+                          const text = res.response.image 
+                            ? "Image sequence - non-textual" 
+                            : (Array.isArray(res.response) ? res.response[0]?.generated_text : JSON.stringify(res.response));
+                          copyToClipboard(text, res.id);
+                        }}
+                        className={`flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest transition-all ${copiedId === res.id ? 'text-emerald-500' : 'text-white/20 hover:text-white'}`}
+                      >
+                        {copiedId === res.id ? <Check size={10} /> : <Copy size={10} />}
+                        {copiedId === res.id ? "Copied" : "Copy"}
+                      </button>
+                      <span className="text-[8px] font-mono text-white/20 uppercase tracking-widest">{res.model} @ {res.timestamp}</span>
+                    </div>
                   </div>
-                  <div className="bg-[#050505] border border-white/5 p-8 font-mono text-base leading-relaxed rounded-lg shadow-inner text-[#BBB]">
-                    {Array.isArray(res.response) ? (
+                  <div className="bg-[#050505] border border-white/5 p-8 font-mono text-base leading-relaxed rounded-lg shadow-inner text-[#BBB] relative overflow-hidden">
+                    {res.response.image ? (
+                        <div className="space-y-4">
+                          <img 
+                            src={res.response.image} 
+                            alt="Generated" 
+                            className="max-w-full h-auto rounded border border-white/10 shadow-2xl"
+                            referrerPolicy="no-referrer"
+                          />
+                          <a 
+                            href={res.response.image} 
+                            download={`hf_${res.id}.png`}
+                            className="inline-flex items-center gap-2 px-3 py-1 bg-white/5 hover:bg-white/10 text-[9px] uppercase tracking-widest text-white/60 rounded transition-colors"
+                          >
+                            <ExternalLink size={10} />
+                            Download Stream
+                          </a>
+                        </div>
+                    ) : Array.isArray(res.response) ? (
                          res.response.map((r, idx) => (
-                           <p key={idx} className="whitespace-pre-wrap text-gray-200">
+                           <p key={idx} className="whitespace-pre-wrap text-emerald-50/80 drop-shadow-[0_0_10px_rgba(16,185,129,0.1)]">
                              {r.generated_text || JSON.stringify(r)}
                            </p>
                          ))
                        ) : (
-                         <pre className="text-xs p-4 rounded-lg overflow-x-auto">
+                         <pre className="text-[10px] opacity-60">
                             {JSON.stringify(res.response, null, 2)}
                          </pre>
                        )}

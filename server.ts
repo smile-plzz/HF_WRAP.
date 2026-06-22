@@ -61,18 +61,30 @@ app.post("/api/inference", async (req, res) => {
       body: JSON.stringify(body),
     });
 
-    let data: any;
-    const contentType = response.headers.get("content-type");
+    // Determine if we should handle as binary/image
+    const contentType = response.headers.get("content-type") || "";
+    const isImage = contentType.includes("image/");
+
+    if (isImage) {
+      const buffer = await response.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString("base64");
+      return res.json({ 
+        image: `data:${contentType};base64,${base64}`,
+        contentType 
+      });
+    }
+
     const text = await response.text();
+    let data: any;
     
     try {
-      if (contentType && contentType.includes("application/json")) {
+      if (contentType.includes("application/json")) {
         data = JSON.parse(text);
       } else {
-        data = { error: text || `HTTP ${response.status}: ${response.statusText}` };
+        data = { text };
       }
     } catch (e) {
-      data = { error: text || `Failed to parse response from Hugging Face (Status: ${response.status})` };
+      data = { text };
     }
 
     if (!response.ok) {

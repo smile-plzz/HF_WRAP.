@@ -5,10 +5,10 @@ A high-performance, polished neural interface for interacting with the **Hugging
 ## 🚀 Key Features
 
 - **Neural Bridge Architecture**: Secure Express-mediated proxy to bypass standard network restrictions and handle authentication seamlessly.
+- **Persistent Context**: Integrated local-first inference history with session-persistent storage and one-click recall.
+- **Multimodal Support**: Full rendering support for text-to-image models (FLUX, Stable Diffusion) with download capabilities.
+- **Deep Recall**: Integrated one-click copy functionality and history management for streamlined prompt engineering.
 - **Provider Optimization**: Automatically routes requests through optimized endpoints (`router.huggingface.co`) to ensure maximum uptime and connectivity.
-- **Multi-Task Support**: Pre-configured templates for Text Generation, Summarization, Translation, and Classification.
-- **Dynamic Auth**: Support for both system-level environment tokens and session-specific user access tokens.
-- **Glassmorphic UI**: A dark, high-contrast interface designed for focus and technical precision.
 
 ## 🛠 Architecture
 
