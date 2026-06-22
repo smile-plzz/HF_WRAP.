@@ -1,6 +1,9 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const app = express();
 const PORT = 3000;
@@ -58,6 +61,7 @@ app.post("/api/inference", async (req, res) => {
     const response = await fetch(targetUrl, {
       method: "POST",
       headers,
+      signal: AbortSignal.timeout(60000), // 60s timeout
       body: JSON.stringify(body),
     });
 
