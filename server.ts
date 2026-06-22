@@ -11,14 +11,7 @@ app.use(express.json());
 app.post("/api/inference", async (req, res) => {
   const { model, inputs, parameters, task, provider } = req.body;
   const userToken = req.headers["x-hf-token"] as string;
-  const HF_TOKEN = userToken || process.env.HF_TOKEN;
-
-  if (!HF_TOKEN) {
-    return res.status(401).json({ 
-      error: "HF_TOKEN not found.", 
-      details: "Please provide a token in the UI or ensure the server is configured with a system-level key." 
-    });
-  }
+  const HF_TOKEN = (userToken || process.env.HF_TOKEN || process.env.HUGGINGFACE_API_KEY || "").trim();
 
   if (!model || !inputs) {
     return res.status(400).json({ error: "Missing model or inputs in request body." });
@@ -27,9 +20,6 @@ app.post("/api/inference", async (req, res) => {
   try {
     console.log(`[HF_REQUEST] Model: ${model} | Task: ${task || 'AUTO'} | Provider: ${provider || 'DEFAULT'}`);
     
-    // api-inference.huggingface.co is the official endpoint.
-    // router.huggingface.co is kept as a fallback if DNS fails for the primary.
-    const url = `https://api-inference.huggingface.co/models/${model}`;
     const body: any = {
       inputs,
       parameters: {
@@ -39,11 +29,15 @@ app.post("/api/inference", async (req, res) => {
     };
 
     const headers: Record<string, string> = {
-      "Authorization": `Bearer ${HF_TOKEN}`,
       "Content-Type": "application/json",
       "x-wait-for-model": "true",
-      "x-use-cache": "true"
+      "x-use-cache": "true",
+      "User-Agent": "HF-Inference-App/1.0"
     };
+
+    if (HF_TOKEN) {
+      headers["Authorization"] = `Bearer ${HF_TOKEN}`;
+    }
 
     if (task) {
       // Modern Inference Providers (Together, Fireworks, etc.) use x-inference-task
@@ -56,59 +50,16 @@ app.post("/api/inference", async (req, res) => {
       headers["x-inference-provider"] = provider;
     }
 
-    // Attempt inference with automated fallback for network resilience
-    // api-inference.hf.co is used as a reliable alternative to .huggingface.co in some environments
-    const endpoints = [
-      `https://api-inference.hf.co/models/${model}`,
-      `https://router.huggingface.co/models/${model}`,
-      `https://api-inference.huggingface.co/models/${model}`
-    ];
+    // Determine target endpoint. 
+    // router.huggingface.co is prioritized as it demonstrates better connectivity from this environment's IP range.
+    const targetUrl = `https://router.huggingface.co/models/${model}`;
     
-    let response;
-    let lastError: any;
-
-    const isPartnerProvider = provider && provider !== "hf-inference";
-
-    for (const url of endpoints) {
-      try {
-        // Optimization: If a partner provider is selected, we MUST use the router
-        if (isPartnerProvider && !url.includes("router.huggingface.co")) {
-          continue;
-        }
-
-        console.log(`[HF_TRY] Attempting: ${url}`);
-        response = await fetch(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
-        });
-        
-        // If we get a response (even if not 2xx), we evaluate if we should continue searching
-        if (response.ok) {
-          console.log(`[HF_CHECK] Success from ${url}`);
-          break;
-        }
-
-        // If it's a 404 from the router, it might mean the model isn't available via the router's current provider set
-        // We move to next if it's a "model not found" or "provider not found" type error in the fallback chain
-        if (response.status === 404 && url.includes("router")) {
-           console.log(`[HF_DEBUG] Router 404 for ${model}, trying next...`);
-           continue;
-        }
-
-        // For 401/403, we break because it's an auth issue, not a routing issue
-        if (response.status === 401 || response.status === 403) {
-          break;
-        }
-      } catch (err: any) {
-        console.error(`[HF_TRY_FAIL] ${url}: ${err.message}`);
-        lastError = err;
-      }
-    }
-
-    if (!response) {
-      throw lastError || new Error("All inference endpoints failed to resolve.");
-    }
+    console.log(`[HF_TRY] Attempting server-mediated bridge: ${targetUrl}`);
+    const response = await fetch(targetUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
 
     let data: any;
     const contentType = response.headers.get("content-type");

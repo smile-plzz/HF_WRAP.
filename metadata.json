@@ -1,6 +1,6 @@
 {
   "name": "Hugging Face Wrapper",
-  "description": "A polished interface to interact with Hugging Face Inference API models securely.",
+  "description": "A polished neural interface for Hugging Face Inference API models, featuring direct client-side bridging to bypass network restrictions.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
